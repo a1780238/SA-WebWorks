@@ -1,90 +1,64 @@
-# SA WebWorks — Booked-Jobs Engine v1 (Template)
+# SA WebWorks — Booked‑Jobs Engine
 
-Production-ready Next.js template for SA WebWorks client deployments.
+Client-grade template for deploying a production marketing site + lead pipeline per trade business.
 
-## Stack (locked)
+## What ships
+- Next.js App Router + TypeScript app (deploy to Vercel)
+- Marketing pages: `/`, `/services`, `/areas`, `/pricing`, `/about`, `/contact`, `/privacy`, `/pay`
+- Quote funnel with validation, rate-limit, captcha hook, and UTM capture
+- Lead pipeline: DB write → owner notification → lead confirmation → redirect to `/thanks`
+- Auth-protected admin dashboard at `/admin` with filters, status/notes updates, and CSV export
+- Analytics events: `call_click`, `quote_submit`, `quote_success`
+- Stripe deposit page + webhook scaffold to mark lead as `deposit_paid`
+- Supabase migrations + RLS in `supabase/migrations`
+- Public GitHub Pages marketing homepage in `docs/`
+
+## Tech stack (locked)
 - Next.js App Router + TypeScript
 - Tailwind CSS
-- Supabase (Postgres + Auth)
+- Supabase Postgres + Auth
 - Resend (email notifications)
-- Stripe Checkout (deposit scaffold)
-- Cloudflare Turnstile + server-side rate limiting
+- Stripe Checkout
+- Cloudflare Turnstile (server verification hook)
 - Vercel deployment target
 
-## Features
-- Conversion landing page (`/`) and thank-you page (`/thanks`)
-- Lead capture API with validation, anti-spam, idempotency, analytics hooks
-- Owner notifications (email, optional SMS log hook)
-- Admin login (`/admin/login`) + leads dashboard (`/admin/leads`)
-- CSV export and status update APIs
-- Supabase migrations + RLS policies
-- CI pipeline (lint, typecheck, build)
-
-## Project structure
-- `app/(public)/page.tsx` landing page
-- `app/(public)/thanks/page.tsx` post-submit page
-- `app/admin/login/page.tsx`
-- `app/admin/leads/page.tsx`
-- `app/api/lead/route.ts`
-- `app/api/stripe/checkout/route.ts`
-- `app/api/webhooks/stripe/route.ts`
-- `lib/*` supabase, validators, rate limit, notifications
-- `config/tenant.ts` configurable business details
-- `supabase/migrations` schema + RLS
-
-## Environment variables
-Copy `.env.example` to `.env.local` and set values:
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `OWNER_EMAIL`
-- `RESEND_API_KEY`
-- `TURNSTILE_SECRET_KEY`
-- `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` (optional)
-- analytics vars (optional)
-
-## Local setup
+## Run locally
 ```bash
 pnpm install
 pnpm dev
 ```
-Open: `http://localhost:3000`
 
-## Supabase setup
-1. Create project in Supabase.
-2. Run SQL migration from `supabase/migrations/001_create_leads.sql`.
-3. (Optional) run seed from `supabase/seed/demo_leads.sql`.
-4. Create admin user in Supabase Auth.
-5. Ensure JWT includes `tenant_key` claim for tenant-scoped RLS reads/updates.
+## Environment variables
+See `.env.example`.
 
-## Deploy to Vercel
-1. Push repository to GitHub.
-2. Import project in Vercel.
-3. Set all env vars from `.env.example`.
-4. Deploy.
-5. Connect domain and DNS.
+## Tenant configuration
+Edit `config/tenant.ts` (business name, phone, services, suburbs, trust badges, FAQs, pricing).
 
-## Tenant config instructions
-Edit `config/tenant.ts` for business-level customizations:
-- name/phone/headline
-- services list
-- suburbs
-- FAQs
-- trust bar
+## Database
+Run migration:
+- `supabase/migrations/001_create_leads.sql`
 
-No code changes required for these basics.
+Optional seed:
+- `supabase/seed/demo_leads.sql`
 
-## Weekly KPI checklist template
-- Leads received (count)
-- Contacted within 5 mins (% of leads)
-- Booked jobs (count)
-- Win rate (won / total)
-- Average time-to-first-contact
-- Cost per lead (if paid traffic)
-- Top 3 job types by volume
+## Admin
+- Login: `/admin/login`
+- Dashboard: `/admin`
 
-## SOP: Admin operations
-- Login at `/admin/login`
-- Review new leads in `/admin/leads`
-- Update status/notes via admin API (`PATCH /api/admin/lead/:id`)
-- Export CSV via `/api/admin/leads?format=csv`
+## API routes
+- `POST /api/lead`
+- `GET /api/admin/leads` (+ `status`, `job_type`, `suburb`, `from`, `to`, `format=csv`)
+- `PATCH /api/admin/lead/:id`
+- `POST /api/stripe/checkout`
+- `POST /api/webhooks/stripe`
+
+## Deployment
+Full steps are in `DEPLOYMENT.md`.
+
+## GitHub Pages
+This repo includes a client-friendly static site under `docs/`.
+Set GitHub Pages Source to:
+- Branch: `main`
+- Folder: `/docs`
+
+This prevents GitHub Pages from rendering repository README as the homepage.

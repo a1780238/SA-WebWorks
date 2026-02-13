@@ -5,7 +5,7 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 do $$ begin
-  create type lead_status as enum ('new','contacted','booked','won','lost');
+  create type lead_status as enum ('new','contacted','booked','won','lost','deposit_paid');
 exception when duplicate_object then null; end $$;
 
 do $$ begin
@@ -29,6 +29,7 @@ create table if not exists public.leads (
   description text,
   preferred_contact_window contact_window,
   source text not null default 'unknown',
+  page_source text not null default 'unknown',
   status lead_status not null default 'new',
   notes text,
   deposit_status deposit_status_type not null default 'none',
@@ -38,6 +39,31 @@ create table if not exists public.leads (
   utm_campaign text,
   utm_term text,
   utm_content text
+);
+
+create table if not exists public.notification_attempts (
+  unique_key text primary key,
+  lead_id uuid references public.leads(id) on delete cascade,
+  channel text not null,
+  recipient text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.analytics_events (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  tenant_key text not null,
+  lead_id uuid references public.leads(id) on delete set null,
+  event_name text not null,
+  payload jsonb not null default '{}'::jsonb
+);
+
+create table if not exists public.webhook_events (
+  provider text not null,
+  event_id text not null,
+  created_at timestamptz not null default now(),
+  payload jsonb not null default '{}'::jsonb,
+  primary key (provider, event_id)
 );
 
 alter table public.leads enable row level security;

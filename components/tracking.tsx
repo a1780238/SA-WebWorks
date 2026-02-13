@@ -29,7 +29,7 @@ export function TrackingScripts() {
   );
 }
 
-export function trackClientEvent(event: "lead_submit" | "click_call" | "click_quote" | "deposit_paid") {
+export function trackClientEvent(event: "call_click" | "quote_submit" | "quote_success" | "deposit_paid") {
   if (process.env.NEXT_PUBLIC_ANALYTICS_ENABLED !== "true") return;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const w = window as any;

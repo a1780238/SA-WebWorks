@@ -4,7 +4,18 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { trackClientEvent } from "@/components/tracking";
 
-export function QuoteForm({ suburbs, services }: { suburbs: string[]; services: string[] }) {
+function getUtm() {
+  const p = new URLSearchParams(window.location.search);
+  return {
+    utm_source: p.get("utm_source") ?? undefined,
+    utm_medium: p.get("utm_medium") ?? undefined,
+    utm_campaign: p.get("utm_campaign") ?? undefined,
+    utm_term: p.get("utm_term") ?? undefined,
+    utm_content: p.get("utm_content") ?? undefined
+  };
+}
+
+export function QuoteForm({ suburbs, services, pageSource = "home" }: { suburbs: string[]; services: string[]; pageSource?: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -12,26 +23,32 @@ export function QuoteForm({ suburbs, services }: { suburbs: string[]; services: 
   async function onSubmit(formData: FormData) {
     setLoading(true);
     setError(null);
+    trackClientEvent("quote_submit");
 
     const payload = Object.fromEntries(formData.entries());
     const res = await fetch("/api/lead", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-idempotency-key": crypto.randomUUID() },
+      headers: {
+        "Content-Type": "application/json",
+        "x-idempotency-key": crypto.randomUUID()
+      },
       body: JSON.stringify({
         ...payload,
         source: "direct",
-        turnstileToken: "dev-bypass"
+        page_source: pageSource,
+        turnstileToken: (payload.turnstileToken as string) || "dev-bypass",
+        ...getUtm()
       })
     });
 
     if (!res.ok) {
       const data = await res.json();
-      setError(data.error ?? "Unable to submit lead");
+      setError(data.error ?? "Unable to submit quote");
       setLoading(false);
       return;
     }
 
-    trackClientEvent("lead_submit");
+    trackClientEvent("quote_success");
     router.push("/thanks");
   }
 
@@ -42,14 +59,10 @@ export function QuoteForm({ suburbs, services }: { suburbs: string[]; services: 
       <input className="w-full rounded border p-2" name="phone" placeholder="Phone" required />
       <input className="w-full rounded border p-2" name="email" placeholder="Email (optional)" type="email" />
       <select className="w-full rounded border p-2" name="suburb" required>
-        {suburbs.map((s) => (
-          <option value={s} key={s}>{s}</option>
-        ))}
+        {suburbs.map((s) => <option key={s} value={s}>{s}</option>)}
       </select>
       <select className="w-full rounded border p-2" name="job_type" required>
-        {services.map((s) => (
-          <option value={s} key={s}>{s}</option>
-        ))}
+        {services.map((s) => <option key={s} value={s}>{s}</option>)}
       </select>
       <select className="w-full rounded border p-2" name="urgency" defaultValue="quote" required>
         <option value="emergency">Emergency</option>
@@ -57,9 +70,10 @@ export function QuoteForm({ suburbs, services }: { suburbs: string[]; services: 
         <option value="this_week">This week</option>
         <option value="quote">Quote</option>
       </select>
-      <textarea className="w-full rounded border p-2" name="description" placeholder="Tell us about the job" />
+      <textarea className="w-full rounded border p-2" name="description" placeholder="Notes (optional)" rows={3} />
+      <input type="hidden" name="turnstileToken" value="dev-bypass" />
       <button disabled={loading} className="w-full rounded bg-brand px-4 py-2 font-semibold text-white">
-        {loading ? "Submitting..." : "Submit"}
+        {loading ? "Submitting..." : "Submit Quote"}
       </button>
       {error && <p className="text-sm text-red-600">{error}</p>}
     </form>

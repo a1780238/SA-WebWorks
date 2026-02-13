@@ -4,7 +4,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { leadSchema } from "@/lib/validators";
 import { tenantConfig } from "@/config/tenant";
 import { verifyTurnstile } from "@/lib/turnstile";
-import { notifyOwner } from "@/lib/notify";
+import { sendLeadConfirmation, sendOwnerNotification } from "@/lib/notify";
+import { sanitizeText } from "@/lib/sanitize";
 import { trackServerEvent } from "@/lib/analytics";
 
 export async function POST(req: NextRequest) {
@@ -15,9 +16,7 @@ export async function POST(req: NextRequest) {
 
     const input = parsed.data;
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-    if (!checkRateLimit(`${ip}:${input.phone}`)) {
-      return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
-    }
+    if (!checkRateLimit(`${ip}:${input.phone}`)) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
     const turnstileOk = await verifyTurnstile(input.turnstileToken, ip);
     if (!turnstileOk) return NextResponse.json({ error: "Captcha verification failed" }, { status: 400 });
@@ -29,45 +28,72 @@ export async function POST(req: NextRequest) {
       .from("leads")
       .select("id")
       .eq("tenant_key", tenantConfig.tenantKey)
-      .eq("phone", input.phone)
-      .eq("suburb", input.suburb)
-      .eq("job_type", input.job_type)
+      .eq("phone", sanitizeText(input.phone))
+      .eq("suburb", sanitizeText(input.suburb))
+      .eq("job_type", sanitizeText(input.job_type))
       .gte("created_at", duplicateCutoff)
       .maybeSingle();
 
-    if (duplicate) return NextResponse.json({ ok: true, duplicate: true }, { status: 200 });
+    if (duplicate) return NextResponse.json({ ok: true, duplicate: true, leadId: duplicate.id });
 
-    const { data, error } = await supabase
+    const { data: lead, error } = await supabase
       .from("leads")
       .insert({
         tenant_key: tenantConfig.tenantKey,
-        name: input.name,
-        phone: input.phone,
-        email: input.email || null,
-        suburb: input.suburb,
-        job_type: input.job_type,
+        name: sanitizeText(input.name),
+        phone: sanitizeText(input.phone),
+        email: sanitizeText(input.email) || null,
+        suburb: sanitizeText(input.suburb),
+        job_type: sanitizeText(input.job_type),
         urgency: input.urgency,
-        description: input.description || null,
+        description: sanitizeText(input.description) || null,
         preferred_contact_window: input.preferred_contact_window || null,
         source: input.source,
+        page_source: sanitizeText(input.page_source),
         status: "new",
         deposit_status: "none",
         deposit_amount_cents: 0,
-        utm_source: input.utm_source || null,
-        utm_medium: input.utm_medium || null,
-        utm_campaign: input.utm_campaign || null,
-        utm_term: input.utm_term || null,
-        utm_content: input.utm_content || null
+        utm_source: sanitizeText(input.utm_source) || null,
+        utm_medium: sanitizeText(input.utm_medium) || null,
+        utm_campaign: sanitizeText(input.utm_campaign) || null,
+        utm_term: sanitizeText(input.utm_term) || null,
+        utm_content: sanitizeText(input.utm_content) || null
       })
       .select("*")
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error || !lead) return NextResponse.json({ error: error?.message ?? "Unable to create lead" }, { status: 500 });
 
-    await notifyOwner(data);
-    trackServerEvent("lead_submit", { tenant: tenantConfig.tenantKey, leadId: data.id });
+    const requestKey = req.headers.get("x-idempotency-key") || `lead-${lead.id}`;
 
-    return NextResponse.json({ ok: true, leadId: data.id });
+    const ownerAttempt = await supabase.from("notification_attempts").insert({
+      unique_key: `${requestKey}:owner`,
+      lead_id: lead.id,
+      channel: tenantConfig.ownerSms ? "email+sms" : "email",
+      recipient: tenantConfig.ownerEmail
+    });
+    if (!ownerAttempt.error) await sendOwnerNotification(lead);
+
+    if (lead.email || lead.phone) {
+      const leadAttempt = await supabase.from("notification_attempts").insert({
+        unique_key: `${requestKey}:lead`,
+        lead_id: lead.id,
+        channel: lead.phone ? "email+sms" : "email",
+        recipient: String(lead.email || lead.phone)
+      });
+      if (!leadAttempt.error) await sendLeadConfirmation(lead);
+    }
+
+    await supabase.from("analytics_events").insert({
+      tenant_key: tenantConfig.tenantKey,
+      lead_id: lead.id,
+      event_name: "quote_success",
+      payload: { source: input.source, page_source: input.page_source }
+    });
+
+    trackServerEvent("quote_success", { tenant: tenantConfig.tenantKey, leadId: lead.id });
+
+    return NextResponse.json({ ok: true, leadId: lead.id });
   } catch (error) {
     return NextResponse.json({ error: "Unexpected error", details: String(error) }, { status: 500 });
   }
