@@ -1,0 +1,14 @@
+{
+  "template": "standard-service-invoice",
+  "currency": "AUD",
+  "payment_terms_days": 7,
+  "line_items": [
+    {
+      "code": "STD-SERVICE",
+      "description": "Standard service",
+      "quantity": 1,
+      "unit_price": 350
+    }
+  ],
+  "payment_link_provider": "stripe_or_xero"
+}
