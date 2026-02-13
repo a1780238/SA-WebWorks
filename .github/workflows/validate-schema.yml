@@ -1,0 +1,17 @@
+name: validate-schema
+
+on:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure schema exists
+        run: test -f ops/db/001_initial_schema.sql
+
+      - name: Run unit tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
