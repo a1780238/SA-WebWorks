@@ -1,0 +1,19 @@
+{
+  "brand": "SA WebWorks",
+  "domain": "sawebworks.com.au",
+  "service_area": "South Australia",
+  "service_suburbs": [
+    "adelaide",
+    "morphett vale",
+    "glenelg",
+    "prospect",
+    "norwood",
+    "modbury",
+    "unley",
+    "marion"
+  ],
+  "role_inbox": "hello@sawebworks.com.au",
+  "slo_notification_seconds": 60,
+  "reputation_commitment": "Trust-first automation with transparent data handling, fast response, and measurable outcomes.",
+  "market_strategy": "Own high-intent SA tradie demand with speed-to-lead, local proof, and deterministic follow-up."
+}
