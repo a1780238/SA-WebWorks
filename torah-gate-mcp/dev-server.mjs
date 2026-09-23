@@ -2,6 +2,7 @@ import http from "node:http";
 import { handleMcpBody } from "./src/torah-gate.mjs";
 
 const port = Number(process.env.PORT || 3000);
+const host = "0.0.0.0";
 const getHeader = (req, name) => Array.isArray(req.headers[name]) ? req.headers[name][0] : req.headers[name];
 const isModern = body => !Array.isArray(body) && body?.params?._meta?.["io.modelcontextprotocol/protocolVersion"] === "2026-07-28";
 
@@ -56,6 +57,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(port, "127.0.0.1", () => {
-  console.error(`Torah Gate MCP listening on http://127.0.0.1:${port}/mcp`);
+server.listen(port, host, () => {
+  console.error(`Torah Gate MCP listening on http://${host}:${port}/mcp`);
 });
