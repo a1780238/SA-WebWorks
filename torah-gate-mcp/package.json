@@ -1,0 +1,11 @@
+{
+  "name": "torah-gate-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node dev-server.mjs",
+    "test": "node test/run.mjs",
+    "demo": "node scripts/demo.mjs"
+  }
+}
