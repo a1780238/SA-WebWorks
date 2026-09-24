@@ -52,8 +52,21 @@ const base = {
     assurStart:"2026-09-18T17:00:00+10:00",assurEnd:"2026-09-18T17:10:00+10:00",
     boundaries:[{category:"candles",date:"2026-09-18T17:00:00+10:00"},{category:"havdalah",date:"2026-09-18T17:10:00+10:00"}]
   });
-  const out=await evaluateDecision({...base,event:{...base.event,melachaRequirement:"unknown"}},{fetchImpl});
+  const out=await evaluateDecision({...base,event:{...base.event,melachaRequirement:"unknown",activity:{description:"Drive a petrol car",actionTags:["drive_combustion_vehicle"]}}},{fetchImpl});
   assert.equal(out.verdict,"HOLD");
+  assert.equal(out.gates[0].activityClassification.status,"CANDIDATE_PROHIBITION_REVIEW_REQUIRED");
+  assert.equal(out.gates[0].activityClassification.hardDecisionEligible,false);
+  assert.ok(out.gates[0].activityClassification.candidateCategories.includes("mavir"));
+}
+
+{
+  const fetchImpl=fakeProvider({
+    assurStart:"2026-09-18T17:00:00+10:00",assurEnd:"2026-09-18T17:10:00+10:00",
+    boundaries:[{category:"candles",date:"2026-09-18T17:00:00+10:00"},{category:"havdalah",date:"2026-09-18T17:10:00+10:00"}]
+  });
+  const out=await evaluateDecision({...base,event:{...base.event,melachaRequirement:"unknown",activity:{description:"Use an electrical appliance",actionTags:["operate_electric_appliance"]}}},{fetchImpl});
+  assert.equal(out.verdict,"HOLD");
+  assert.ok(out.gates[0].activityClassification.candidateCategories.includes("electricity_authority_dependent"));
 }
 
 {
@@ -88,7 +101,7 @@ const base = {
 {
   const init=await handleMcpMessage({jsonrpc:"2.0",id:1,method:"initialize",params:{protocolVersion:"2025-11-25",capabilities:{},clientInfo:{name:"test",version:"1"}}});
   assert.equal(init.result.serverInfo.name,"torah-gate");
-  assert.equal(init.result.serverInfo.version,"0.2.0");
+  assert.equal(init.result.serverInfo.version,"0.3.0");
   const list=await handleMcpMessage({jsonrpc:"2.0",id:2,method:"tools/list",params:{}});
   assert.equal(list.result.tools[0].name,"torah_evaluate_decision");
 }
@@ -97,7 +110,7 @@ const base = {
   const discover=await handleMcpMessage({jsonrpc:"2.0",id:"d1",method:"server/discover",params:{_meta:{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{name:"test",version:"1"}}}},{modern:true});
   assert.equal(discover.result.resultType,"complete");
   assert.deepEqual(discover.result.supportedVersions,["2026-07-28"]);
-  assert.equal(discover.result._meta["io.modelcontextprotocol/serverInfo"].version,"0.2.0");
+  assert.equal(discover.result._meta["io.modelcontextprotocol/serverInfo"].version,"0.3.0");
 }
 
-console.log("All Torah Gate v0.2 tests passed.");
+console.log("All Torah Gate v0.3 tests passed.");
