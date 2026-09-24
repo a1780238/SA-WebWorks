@@ -101,16 +101,33 @@ const base = {
 {
   const init=await handleMcpMessage({jsonrpc:"2.0",id:1,method:"initialize",params:{protocolVersion:"2025-11-25",capabilities:{},clientInfo:{name:"test",version:"1"}}});
   assert.equal(init.result.serverInfo.name,"torah-gate");
-  assert.equal(init.result.serverInfo.version,"0.3.0");
+  assert.equal(init.result.serverInfo.version,"0.4.0");
   const list=await handleMcpMessage({jsonrpc:"2.0",id:2,method:"tools/list",params:{}});
   assert.equal(list.result.tools[0].name,"torah_evaluate_decision");
+  assert.equal(list.result.tools[1].name,"torah_get_rule_review_pack");
 }
 
 {
   const discover=await handleMcpMessage({jsonrpc:"2.0",id:"d1",method:"server/discover",params:{_meta:{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{name:"test",version:"1"}}}},{modern:true});
   assert.equal(discover.result.resultType,"complete");
   assert.deepEqual(discover.result.supportedVersions,["2026-07-28"]);
-  assert.equal(discover.result._meta["io.modelcontextprotocol/serverInfo"].version,"0.3.0");
+  assert.equal(discover.result._meta["io.modelcontextprotocol/serverInfo"].version,"0.4.0");
 }
 
-console.log("All Torah Gate v0.3 tests passed.");
+{
+  const review=await handleMcpMessage({jsonrpc:"2.0",id:"r1",method:"tools/call",params:{name:"torah_get_rule_review_pack",arguments:{activityTag:"operate_electric_appliance"}}});
+  assert.equal(review.result.structuredContent.mode,"single");
+  assert.equal(review.result.structuredContent.rule.reviewState,"SOURCE_VETTED_DISPUTED");
+  assert.equal(review.result.structuredContent.reviewGate.eligible,false);
+  assert.ok(review.result.structuredContent.reviewGate.reasons.length>0);
+  assert.ok(review.result.structuredContent.sources.some(s=>s.id==="star-k-electricity-2025"));
+}
+
+{
+  const review=await handleMcpMessage({jsonrpc:"2.0",id:"r2",method:"tools/call",params:{name:"torah_get_rule_review_pack",arguments:{activityTag:"drive_combustion_vehicle"}}});
+  assert.equal(review.result.structuredContent.rule.reviewState,"SOURCE_VETTED");
+  assert.equal(review.result.structuredContent.reviewGate.eligible,false);
+  assert.ok(review.result.structuredContent.rule.candidateCategories.includes("mavir"));
+}
+
+console.log("All Torah Gate v0.4 tests passed.");
