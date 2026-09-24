@@ -10,8 +10,10 @@ const input = {
       latitude: -27.4698,
       longitude: 153.0251,
       tzid: "Australia/Brisbane",
-      label: "Brisbane, Queensland, Australia"
+      label: "Brisbane, Queensland, Australia",
+      calendarRegime: "diaspora"
     },
+    zmanimProfile: "hebcal_default_18min_8_5deg",
     melachaRequirement: "yes",
     activityNotes: "The calling AI has already established that carrying out the invitation requires prohibited melacha."
   }
