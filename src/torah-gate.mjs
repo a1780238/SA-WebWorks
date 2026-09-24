@@ -1,5 +1,6 @@
-const SERVER_VERSION = "0.2.0";
-const RULE_PACK_VERSION = "torah-gate/0.2.0";
+import { classifyActivity } from "./activity-classifier.mjs";
+const SERVER_VERSION = "0.3.0";
+const RULE_PACK_VERSION = "torah-gate/0.3.0";
 const ZMANIM_PROFILE = "hebcal_default_18min_8_5deg";
 const HEB_CAL_ASSUR_DOC = "https://www.hebcal.com/home/5058/assur-melacha-work-forbidden-api";
 const HEB_CAL_CALENDAR_DOC = "https://www.hebcal.com/home/195/jewish-calendar-rest-api";
@@ -23,7 +24,7 @@ const SOURCES = [
 export const toolDefinition = {
   name:"torah_evaluate_decision",
   title:"Torah-check a decision",
-  description:"Evaluate a proposed action against the installed Torah Gate rule pack. Version 0.2 verifies Shabbat/Yom-Tov calendar conflicts by partitioning intervals at Hebcal candle-lighting/havdalah boundaries and point-checking each segment. It returns HOLD rather than silently assuming Israel/Diaspora regime, zmanim profile, activity classification, exceptions, or unimplemented Torah coverage. This is decision support, not rabbinic psak.",
+  description:"Evaluate a proposed action against the installed Torah Gate rule pack. Version 0.3 verifies Shabbat/Yom-Tov calendar conflicts by partitioning intervals at Hebcal candle-lighting/havdalah boundaries and point-checking each segment. It returns HOLD rather than silently assuming Israel/Diaspora regime, zmanim profile, activity classification, exceptions, or unimplemented Torah coverage. This is decision support, not rabbinic psak.",
   inputSchema:{
     type:"object", additionalProperties:false, required:["decision"],
     properties:{
@@ -46,7 +47,8 @@ export const toolDefinition = {
           zmanimProfile:{type:"string",enum:[ZMANIM_PROFILE]},
           melachaRequirement:{type:"string",enum:["yes","no","unknown"]},
           emergencyOverridePossible:{type:"boolean",default:false},
-          activityNotes:{type:"string"}
+          activityNotes:{type:"string"},
+          activity:{type:"object",additionalProperties:false,properties:{description:{type:"string"},actionTags:{type:"array",items:{type:"string"}}}}
         }
       }
     }
@@ -139,8 +141,8 @@ function holdResult({scope,summary,gates,coverageReason,auditExtra={}}){
   return {
     verdict:"HOLD",rulePackVersion:RULE_PACK_VERSION,rulePack:RULE_PACK_META,scope,summary,
     coverage:{
-      status:"partial",implemented:["shabbat_yomtov.calendar_boundary"],
-      notYetImplemented:["activity-level melacha classification","ribbis and finance","truth and misrepresentation","property and theft","contracts and monetary law","speech obligations and prohibitions","damages and interpersonal duties","positive-commandment conflicts and exceptions"],
+      status:"partial",implemented:["shabbat_yomtov.calendar_boundary","shabbat_yomtov.activity_candidate_classifier"],
+      notYetImplemented:["rabbinically-reviewed activity adjudication","ribbis and finance","truth and misrepresentation","property and theft","contracts and monetary law","speech obligations and prohibitions","damages and interpersonal duties","positive-commandment conflicts and exceptions"],
       reason:coverageReason
     },
     gates,sources:SOURCES,audit:baseAudit(auditExtra)
@@ -152,12 +154,12 @@ export async function evaluateDecision(input,options={}){
   const scope=input?.scope==="shabbat_yomtov_only"?"shabbat_yomtov_only":"full_torah";
   const decision=typeof input?.decision==="string"?input.decision.trim():"";
   if(!decision)return holdResult({scope,summary:"No concrete proposed action was supplied.",gates:[],coverageReason:"A decision statement is required before any gate can be evaluated."});
-  if(!input.event)return holdResult({scope,summary:"No calendar-event facts were supplied, so the installed Shabbat/Yom-Tov gate cannot run.",gates:[{id:"shabbat_yomtov.calendar_boundary",verdict:"HOLD",reason:"Missing event start time and location."}],coverageReason:"Version 0.2 only contains an executable Shabbat/Yom-Tov calendar gate."});
+  if(!input.event)return holdResult({scope,summary:"No calendar-event facts were supplied, so the installed Shabbat/Yom-Tov gate cannot run.",gates:[{id:"shabbat_yomtov.calendar_boundary",verdict:"HOLD",reason:"Missing event start time and location."}],coverageReason:"Version 0.3 only contains an executable Shabbat/Yom-Tov calendar gate."});
 
   const event=input.event,start=parseInstant(event.start),end=event.end?parseInstant(event.end):null,location=event.location??{};
   if(!start||(event.end&&!end))return holdResult({scope,summary:"Event time is invalid or lacks an explicit UTC offset.",gates:[{id:"shabbat_yomtov.calendar_boundary",verdict:"HOLD",reason:"Invalid ISO-8601 datetime."}],coverageReason:"The calendar gate requires unambiguous instants."});
   if(end&&end<start)return holdResult({scope,summary:"Event end precedes event start.",gates:[{id:"shabbat_yomtov.calendar_boundary",verdict:"HOLD",reason:"Invalid event interval."}],coverageReason:"The calendar gate requires a valid interval."});
-  if(end&&end.getTime()-start.getTime()>14*24*60*60*1000)return holdResult({scope,summary:"Event interval exceeds the v0.2 evaluation limit of 14 days.",gates:[{id:"shabbat_yomtov.calendar_boundary",verdict:"HOLD",reason:"Interval too long for this rule pack."}],coverageReason:"Long-duration plans require a larger reviewed calendar evaluation scope."});
+  if(end&&end.getTime()-start.getTime()>14*24*60*60*1000)return holdResult({scope,summary:"Event interval exceeds the v0.3 evaluation limit of 14 days.",gates:[{id:"shabbat_yomtov.calendar_boundary",verdict:"HOLD",reason:"Interval too long for this rule pack."}],coverageReason:"Long-duration plans require a larger reviewed calendar evaluation scope."});
   if(typeof location.latitude!=="number"||location.latitude<-90||location.latitude>90||typeof location.longitude!=="number"||location.longitude<-180||location.longitude>180||typeof location.tzid!=="string"||!validateIanaTimeZone(location.tzid)){
     return holdResult({scope,summary:"Location is incomplete or invalid.",gates:[{id:"shabbat_yomtov.calendar_boundary",verdict:"HOLD",reason:"Valid latitude, longitude, and IANA timezone are required."}],coverageReason:"Reliable zmanim require an explicit geographic location and timezone."});
   }
@@ -165,7 +167,7 @@ export async function evaluateDecision(input,options={}){
     return holdResult({scope,summary:"Israel/Diaspora calendar regime was not specified, so Torah Gate will not assume one.",gates:[{id:"shabbat_yomtov.calendar_boundary",verdict:"HOLD",reason:"Set location.calendarRegime to diaspora or israel."}],coverageReason:"Yom-Tov observance days differ between Israel and the Diaspora."});
   }
   if(event.zmanimProfile!==ZMANIM_PROFILE){
-    return holdResult({scope,summary:"A supported zmanim profile was not explicitly selected.",gates:[{id:"shabbat_yomtov.calendar_boundary",verdict:"HOLD",reason:`Set event.zmanimProfile to ${ZMANIM_PROFILE}.`}],coverageReason:"Version 0.2 refuses to silently choose a candle-lighting/Havdalah convention."});
+    return holdResult({scope,summary:"A supported zmanim profile was not explicitly selected.",gates:[{id:"shabbat_yomtov.calendar_boundary",verdict:"HOLD",reason:`Set event.zmanimProfile to ${ZMANIM_PROFILE}.`}],coverageReason:"Version 0.3 refuses to silently choose a candle-lighting/Havdalah convention."});
   }
 
   let boundaries=[];let checks=[];let firstAssur=null;
@@ -180,12 +182,13 @@ export async function evaluateDecision(input,options={}){
     return holdResult({scope,summary:"The calendar authority could not be fully verified, so no hard decision is issued.",gates:[{id:"shabbat_yomtov.calendar_boundary",verdict:"HOLD",reason:error instanceof Error?error.message:"Calendar provider error."}],coverageReason:"A hard gate requires successful boundary discovery and point verification.",auditExtra:{calendarRegime:location.calendarRegime,boundaryCandidates:boundaries.map(b=>({category:b.category,title:b.title,date:b.date})),checkedInstants:checks}});
   }
 
+  const activityClassification=classifyActivity(event.activity??{description:event.activityNotes??"",actionTags:[]});
   const overlapsAssur=Boolean(firstAssur);let gateVerdict="PASS";let gateReason="No verified interval segment falls within a period that Hebcal marks assur bemelacha.";
   if(overlapsAssur){
     if(event.emergencyOverridePossible===true){gateVerdict="HOLD";gateReason="The event overlaps an assur-bemelacha period, but a serious exception may apply. Competent human halakhic review is required.";}
     else if(event.melachaRequirement==="yes"){gateVerdict="FAIL";gateReason="The event overlaps an assur-bemelacha period and the supplied facts state that carrying it out requires prohibited melacha.";}
     else if(event.melachaRequirement==="no"){gateVerdict="PASS";gateReason="The event overlaps an assur-bemelacha period, but supplied facts state that it does not require prohibited melacha. This gate does not independently classify the activities.";}
-    else {gateVerdict="HOLD";gateReason="The event overlaps an assur-bemelacha period, but whether the event requires prohibited melacha has not been established.";}
+    else if(activityClassification.findings.length>0){gateVerdict="HOLD";gateReason="The event overlaps an assur-bemelacha period and the activity classifier found candidate prohibited categories, but those mappings are draft/review-required and cannot create a hard FAIL.";} else {gateVerdict="HOLD";gateReason="The event overlaps an assur-bemelacha period, but whether the event requires prohibited melacha has not been established.";}
   }
   const gate={
     id:"shabbat_yomtov.calendar_boundary",verdict:gateVerdict,overlapsAssurBemlacha:overlapsAssur,reason:gateReason,
@@ -193,14 +196,15 @@ export async function evaluateDecision(input,options={}){
     boundaryCandidates:boundaries.map(b=>({category:b.category,title:b.title,date:b.date})),
     checkedInstants:checks,
     method:"Provider-boundary partitioning: fetch candle-lighting/havdalah candidates for the padded local date range, partition the event interval at those candidates, then verify each segment with Hebcal isAssurBemlacha. Maximum interval: 14 days.",
-    limitations:"This gate determines calendar status only. It does not independently decide whether a specific act is melacha, whether another prohibition applies, or whether an exception overrides the rule. The halakhic mapping has not been rabbinically reviewed."
+    activityClassification,
+    limitations:"This gate determines calendar status. Activity classification may produce review-required candidate categories but cannot create a hard FAIL unless melachaRequirement=yes is already established from an approved external source or later reviewed rule. The halakhic mapping has not been rabbinically reviewed."
   };
-  const auditExtra={calendarRegime:location.calendarRegime,boundaryCandidates:gate.boundaryCandidates,checkedInstants:checks};
+  const auditExtra={calendarRegime:location.calendarRegime,boundaryCandidates:gate.boundaryCandidates,checkedInstants:checks,activityClassification};
 
   if(gateVerdict==="FAIL")return {verdict:"FAIL",rulePackVersion:RULE_PACK_VERSION,rulePack:RULE_PACK_META,scope,summary:"The proposed action fails the installed Shabbat/Yom-Tov calendar gate on the supplied facts.",coverage:{status:"partial",implemented:["shabbat_yomtov.calendar_boundary"],note:"A failed installed mandatory gate can fail the proposal within this decision-support rule pack even though broader Torah domains are not encoded."},gates:[gate],sources:SOURCES,audit:baseAudit(auditExtra)};
   if(gateVerdict==="HOLD")return holdResult({scope,summary:"The installed calendar gate cannot issue a hard verdict from the supplied facts.",gates:[gate],coverageReason:gateReason,auditExtra});
   if(scope==="shabbat_yomtov_only")return {verdict:"PASS",rulePackVersion:RULE_PACK_VERSION,rulePack:RULE_PACK_META,scope,summary:"The proposal passes the installed Shabbat/Yom-Tov calendar gate on the supplied facts.",coverage:{status:"complete_for_requested_scope",implemented:["shabbat_yomtov.calendar_boundary"],note:"PASS applies only to this installed calendar gate and is not a rabbinic ruling."},gates:[gate],sources:SOURCES,audit:baseAudit(auditExtra)};
-  return holdResult({scope,summary:"The installed Shabbat/Yom-Tov gate passes, but the full Torah rule pack is incomplete; an overall PASS would be false precision.",gates:[gate],coverageReason:"Full-Torah coverage is intentionally incomplete in version 0.2.",auditExtra});
+  return holdResult({scope,summary:"The installed Shabbat/Yom-Tov gate passes, but the full Torah rule pack is incomplete; an overall PASS would be false precision.",gates:[gate],coverageReason:"Full-Torah coverage is intentionally incomplete in version 0.3.",auditExtra});
 }
 
 function rpcError(id,code,message,data){const error={code,message};if(data!==undefined)error.data=data;return {jsonrpc:"2.0",id:id??null,error};}
